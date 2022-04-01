@@ -1,179 +1,158 @@
 #include <iostream>
 #include <SDL.h>
 #include <SDL_image.h>
+#include <SDL_mixer.h>
+#include <windows.h>
+#include <cstdlib>
+#include <ctime>
+
+#include "Utils.h"
+#include "common.h"
+#include "Character.h"
+
 
 using namespace std;
 
-const int SCREEN_WIDTH = 1000;
-const int SCREEN_HEIGHT = 600;
-const string WINDOW_TITLE = "Texture Test";
+const int place[] = {100,300,500};
 
-void logSDLError(std::ostream& os,
-                 const std::string &msg, bool fatal = false);
-void initSDL(SDL_Window* &window, SDL_Renderer* &renderer);
-void quitSDL(SDL_Window* window, SDL_Renderer* renderer);
-void waitUntilKeyPressed();
-SDL_Texture* loadTexture( string path, SDL_Renderer* renderer );
+Character character;
 
-void refreshScreen(SDL_Window* window, SDL_Renderer* renderer, SDL_Texture* background, SDL_Texture* character, SDL_Rect& characterRect);
-int main(int argc, char *argv[])
+SDL_Window* window = NULL;
+SDL_Renderer* renderer = NULL;
+
+SDL_Texture* background = NULL;
+SDL_Texture* characterTexture = NULL;
+SDL_Texture* object[MAX];
+
+SDL_Rect characterRect;
+SDL_Rect objectRect[MAX];
+
+Mix_Music *Music = NULL;
+Mix_Chunk *Die = NULL;
+
+
+bool check (SDL_Rect object1Rect, SDL_Rect& characterRect);
+void open();
+void close();
+
+int main (int argc, char*argv[])
 {
-    SDL_Window* window;
-    SDL_Renderer* renderer;
+
     initSDL(window, renderer);
+    OpenAudio();
+    open();
 
-    SDL_Texture* background = loadTexture("background.jpg", renderer);
-    SDL_RenderCopy( renderer, background, NULL, NULL);
-
-    SDL_RenderPresent( renderer );
-
-    SDL_Texture* character = loadTexture("mon.png", renderer);
-    SDL_Rect characterRect;
-    SDL_QueryTexture(character, NULL, NULL, &characterRect.w, &characterRect.h);
-    characterRect.x = 290;
-    characterRect.y = 350;
-    characterRect.w = characterRect.w/5;
-    characterRect.h = characterRect.h/5;
-    SDL_RenderCopy( renderer, character, NULL, &characterRect );
-
-    SDL_Texture* Mouse = loadTexture("chuot.png", renderer);
-    SDL_Rect MouseRect;
-    SDL_QueryTexture(Mouse, NULL, NULL, &MouseRect.w, &MouseRect.h);
-    MouseRect.x = 450;
-    MouseRect.y = 500;
-    MouseRect.w = MouseRect.w/4;
-    MouseRect.h = MouseRect.h/4;
-    SDL_RenderCopy( renderer, Mouse, NULL, &MouseRect );
-
-    SDL_Texture* dorayaki = loadTexture("dorayaki.png", renderer);
-    SDL_Rect dorayakiRect;
-    SDL_QueryTexture(dorayaki, NULL, NULL, &dorayakiRect.w, &dorayakiRect.h);
-    dorayakiRect.x = 400;
-    dorayakiRect.y = 100;
-    dorayakiRect.w = dorayakiRect.w/10;
-    dorayakiRect.h = dorayakiRect.h/10;
-    SDL_RenderCopy( renderer, dorayaki, NULL, &dorayakiRect );
-
-    SDL_RenderPresent( renderer );
-    waitUntilKeyPressed();
+    for (int i = 0; i < MAX; i++)
+    {
+        object[i] = loadTexture("mouse.png", renderer);
+        SDL_QueryTexture(object[i], nullptr, nullptr, &objectRect[i].w, &objectRect[i].h);
+        objectRect[i].x = SCREEN_WIDTH - 200 + i * 400;
+        objectRect[i].y = SCREEN_HEIGHT - 100;
+        objectRect[i].w = objectRect[i].w/6;
+        objectRect[i].h = objectRect[i].h/6;
+    }
+    Mix_PlayMusic( Music, -1 );
 
     SDL_Event e;
-
-    int step = 150;
-    refreshScreen(window, renderer, background, character, characterRect);
-
-    while (true) {
-
-        SDL_Delay(10);
-
-        if ( SDL_WaitEvent(&e) == 0) continue;
-
-        if (e.type == SDL_QUIT) break;
-
-        if (e.type == SDL_KEYDOWN) {
-        	switch (e.key.keysym.sym) {
-        		case SDLK_ESCAPE: break;
-        		case SDLK_LEFT: characterRect.x = (characterRect.x + SCREEN_WIDTH - step) % SCREEN_WIDTH;
-        			break;
-            	case SDLK_RIGHT: characterRect.x = (characterRect.x + step) % SCREEN_WIDTH;
-            		break;
-            	case SDLK_DOWN: characterRect.y = (characterRect.y + step) % SCREEN_HEIGHT;
-					break;
-            	case SDLK_UP: characterRect.y = (characterRect.y + SCREEN_HEIGHT - step) % SCREEN_HEIGHT;
-                    break;
-        		default: break;
-			}
-
-            refreshScreen(window, renderer, background, character, characterRect);
+    int score = 0;
+    srand(time(0));
+    bool GameOver = false;
+    while(!GameOver)
+    {
+        score++;
+        for(int i = 0; i < MAX; i++)
+        {
+            objectRect[i].x-=5 + (score/500);
+                    if(objectRect[i].x < 10)
+                    {
+                    int random = rand()%3;
+                    objectRect[i].y = place[random];
+                    objectRect[i].x = 1200;
+                    }
+            if(check(objectRect[i],characterRect))
+            {
+                GameOver = true;
+            }
         }
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, background, nullptr, nullptr);
+        character.render(renderer, characterTexture, characterRect);
+        for (int i = 0; i < MAX; i++)
+        {
+            SDL_RenderCopy( renderer, object[i], NULL, &objectRect[i] );
+        }
+        SDL_RenderPresent(renderer);
+
+        if (SDL_PollEvent(&e) == 0) continue;
+        if (e.type == SDL_QUIT) break;
+        character.move(e);
+        SDL_RenderPresent(renderer);
     }
 
-
-    //Free loaded image
-    SDL_DestroyTexture( character );
-    character = NULL;
-    SDL_DestroyTexture( dorayaki );
-    dorayaki = NULL;
-    SDL_DestroyTexture( Mouse );
-    Mouse = NULL;
-    SDL_DestroyTexture( background );
-    background = NULL;
-
-    quitSDL(window, renderer);
+    Mix_PlayChannel( -1, Die, 0 );
+    cout << score;
+    waitUntilKeyPressed();
+    close();
     return 0;
 }
 
-SDL_Texture* loadTexture( string path, SDL_Renderer* renderer )
+
+bool check (SDL_Rect object1Rect, SDL_Rect& characterRect)
 {
-    SDL_Texture* newTexture = nullptr;
-    SDL_Surface* loadedSurface = IMG_Load( path.c_str() );
-    if ( loadedSurface == nullptr )
-        cout << "Unable to load image " << path << " SDL_image Error: "
-             << IMG_GetError() << endl;
-    else {
-        newTexture = SDL_CreateTextureFromSurface( renderer, loadedSurface );
-        if( newTexture == nullptr )
-            cout << "Unable to create texture from " << path << " SDL Error: "
-                 << SDL_GetError() << endl;
-        SDL_FreeSurface( loadedSurface );
+    int left1 = object1Rect.x;
+    int right1 = object1Rect.x + object1Rect.w;
+    int top1 = object1Rect.y;
+    int bot1 = object1Rect.y + object1Rect.h;
+
+    int left2 = characterRect.x;
+    int right2 = characterRect.x + characterRect.w;
+    int top2 = characterRect.y;
+    int bot2 = characterRect.y + characterRect.h;
+
+    if (left2 + 60 < right1 && right2 - 60 > right1 )
+    {
+        if (top2 < bot1 && bot2 > bot1)
+            return true;
+        else if (top2 < top1 && bot2 > top1)
+            return true;
     }
-    return newTexture;
-}
-
-void logSDLError(std::ostream& os,
-                 const std::string &msg, bool fatal)
-{
-    os << msg << " Error: " << SDL_GetError() << std::endl;
-    if (fatal) {
-        SDL_Quit();
-        exit(1);
+    if (left2 + 60 < left1 && right2 - 60 > left1)
+    {
+        if (top2 < bot1 && bot2 > bot1)
+            return true;
+        else if (top2 < top1 && bot2 > top1)
+            return true;
     }
+    return false;
 }
 
-void initSDL(SDL_Window* &window, SDL_Renderer* &renderer)
+void open()
 {
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0)
-        logSDLError(std::cout, "SDL_Init", true);
-
-    window = SDL_CreateWindow(WINDOW_TITLE.c_str(), SDL_WINDOWPOS_CENTERED,
-       SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-    //window = SDL_CreateWindow(WINDOW_TITLE.c_str(), SDL_WINDOWPOS_CENTERED,
-      // SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_FULLSCREEN_DESKTOP);
-    if (window == nullptr) logSDLError(std::cout, "CreateWindow", true);
-
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED |
-                                              SDL_RENDERER_PRESENTVSYNC);
-    //renderer = SDL_CreateSoftwareRenderer(SDL_GetWindowSurface(window));
-
-    if (renderer == nullptr) logSDLError(std::cout, "CreateRenderer", true);
-
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "linear");
-    SDL_RenderSetLogicalSize(renderer, SCREEN_WIDTH, SCREEN_HEIGHT);
+    background = loadTexture("Wallpaper.jpg", renderer);
+    characterTexture = loadTexture("mon.png", renderer);
+    Music = Mix_LoadMUS( "DoraemonNoUta.wav" );
+	Die = Mix_LoadWAV( "doraemonsms.wav" );
 }
 
-void quitSDL(SDL_Window* window, SDL_Renderer* renderer)
+void close()
 {
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-}
-
-void waitUntilKeyPressed()
-{
-    SDL_Event e;
-    while (true) {
-        if ( SDL_WaitEvent(&e) != 0 &&
-             (e.type == SDL_KEYDOWN || e.type == SDL_QUIT) )
-            return;
-        SDL_Delay(100);
+    SDL_DestroyTexture( background );
+    background = nullptr;
+    SDL_DestroyTexture( characterTexture );
+    characterTexture = nullptr;
+    for ( int i = 0; i < MAX; i++ )
+    {
+    SDL_DestroyTexture( object[i] );
+    object[i] = nullptr;
     }
+    Mix_FreeChunk( Die );
+    Die = nullptr;
+    Mix_FreeMusic( Music );
+    Music = nullptr;
+    quitSDL(window, renderer);
 }
 
-void refreshScreen(SDL_Window* window, SDL_Renderer* renderer, SDL_Texture* background, SDL_Texture* character, SDL_Rect& characterRect)
-{
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, background, nullptr, nullptr);
-    SDL_RenderCopy( renderer, character, NULL, &characterRect );
-    SDL_RenderPresent(renderer);
-}
+
+
+
 
